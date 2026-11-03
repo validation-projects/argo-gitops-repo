@@ -32,7 +32,3 @@ Kubernetes: ? | CNI: ? | Istio: ? | Argo CD: ? | Argo Rollouts: ?
 ## Limitações do laboratório
 
 Um control plane (sem HA), mTLS em PERMISSIVE, aprovação por PR dispensada (push direto em `main`), sem análise Prometheus (`AnalysisTemplate` fica para a fase 8).
-
-## Bootstrap
-
-O primeiro commit usa `newTag: bootstrap`, que não existe. Rode o pipeline uma vez para substituí-lo pelo digest real; o primeiro rollout sobe direto como estável.

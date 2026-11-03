@@ -1,0 +1,17 @@
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: canary-demo
+  namespace: app-canary
+spec:
+  host: canary-demo-stable
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+  subsets:
+    - name: stable
+      labels:
+        app: canary-demo
+    - name: canary
+      labels:
+        app: canary-demo

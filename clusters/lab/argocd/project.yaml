@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: canary-demo
+  namespace: argocd
+spec:
+  description: Projeto restrito ao namespace app-canary
+  sourceRepos:
+    - git@github.com:OWNER/canary-demo-gitops.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: app-canary
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+  roles:
+    - name: ci
+      description: Usuário do GitHub Actions
+      policies:
+        - p, proj:canary-demo:ci, applications, get, canary-demo/canary-demo, allow
+        - p, proj:canary-demo:ci, applications, sync, canary-demo/canary-demo, allow
+        - p, proj:canary-demo:ci, applications, action/argoproj.io/Rollout/resume, canary-demo/canary-demo, allow
+        - p, proj:canary-demo:ci, applications, action/argoproj.io/Rollout/abort, canary-demo/canary-demo, allow

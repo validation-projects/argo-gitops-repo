@@ -1,0 +1,77 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: canary-demo
+  namespace: app-canary
+spec:
+  replicas: 4
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: canary-demo
+  strategy:
+    canary:
+      stableService: canary-demo-stable
+      canaryService: canary-demo-canary
+      trafficRouting:
+        istio:
+          virtualService:
+            name: canary-demo
+            routes:
+              - primary
+          destinationRule:
+            name: canary-demo
+            canarySubsetName: canary
+            stableSubsetName: stable
+      steps:
+        - setWeight: 50
+        - pause: {}
+        - setWeight: 100
+  template:
+    metadata:
+      labels:
+        app: canary-demo
+    spec:
+      serviceAccountName: canary-demo
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: canary-demo
+          image: canary-demo
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: APP_ENVIRONMENT
+              value: lab
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            failureThreshold: 30
+            periodSeconds: 2
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 5

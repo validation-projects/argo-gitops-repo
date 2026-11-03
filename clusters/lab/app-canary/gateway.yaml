@@ -1,0 +1,25 @@
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: canary-demo
+  namespace: app-canary
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts: [app.canary.lab]
+      tls:
+        httpsRedirect: true
+    - port:
+        number: 443
+        name: https
+        protocol: HTTPS
+      hosts: [app.canary.lab]
+      tls:
+        mode: SIMPLE
+        # Secret criado fora do Git no namespace do ingress gateway (istio-system).
+        credentialName: canary-demo-tls

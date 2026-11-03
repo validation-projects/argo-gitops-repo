@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: app-canary
+resources:
+  - namespace.yaml
+  - serviceaccount.yaml
+  - service-stable.yaml
+  - service-canary.yaml
+  - rollout.yaml
+  - gateway.yaml
+  - virtualservice.yaml
+  - destinationrule.yaml
+  - networkpolicy.yaml
+  - resourcequota.yaml
+images:
+  - name: canary-demo
+    newName: ghcr.io/OWNER/canary-demo
+    newTag: bootstrap
