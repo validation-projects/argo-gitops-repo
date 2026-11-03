@@ -24,7 +24,7 @@ spec:
             canarySubsetName: canary
             stableSubsetName: stable
       steps:
-        - setWeight: 40
+        - setWeight: 50
         - pause: {}
         - setWeight: 100
   template:
