@@ -14,5 +14,5 @@ resources:
   - resourcequota.yaml
 images:
   - name: canary-demo
-    newName: ghcr.io/OWNER/canary-demo
+    newName: ghcr.io/validation-projects/canary-demo
     newTag: bootstrap

@@ -6,7 +6,7 @@ metadata:
 spec:
   project: canary-demo
   source:
-    repoURL: git@github.com:OWNER/canary-demo-gitops.git
+    repoURL: git@github.com:validation-projects/argo-gitops-repo.git
     targetRevision: main
     path: clusters/lab/app-canary
   destination:
