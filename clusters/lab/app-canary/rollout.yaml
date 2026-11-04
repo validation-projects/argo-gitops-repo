@@ -33,6 +33,8 @@ spec:
         app: canary-demo
     spec:
       serviceAccountName: canary-demo
+      imagePullSecrets:
+        - name: ghcr-auth
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
