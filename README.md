@@ -26,7 +26,7 @@ Kubernetes: ? | CNI: ? | Istio: ? | Argo CD: ? | Argo Rollouts: ?
 - Abortar: `argocd app actions run canary-demo abort --kind Rollout --resource-name canary-demo`
 - Rollback por Git: `git revert` do commit de deploy e sync no Argo CD.
 - Rollback por Argo CD: `argocd app rollback canary-demo <ID>` (exige auto-sync desabilitado).
-- Validar proporção: `SMOKE_URL=... SMOKE_HOST=app.canary.lab SMOKE_INSECURE=true STABLE_VERSION=x CANARY_VERSION=y node scripts/smoke-ratio.js` (script do repositório da aplicação).
+- Validar proporção: `SMOKE_URL=https://canary.diegovieira.app/ STABLE_VERSION=x CANARY_VERSION=y node scripts/smoke-ratio.js` (script do repositório da aplicação). O app também responde em `canary.diegovieira.app` com o certificado wildcard `argocd-tls`; `app.canary.lab` continua exigindo o Secret `canary-demo-tls` e `SMOKE_HOST=app.canary.lab SMOKE_INSECURE=true`.
 - Rotação de token: gerar novo token da role `ci`, atualizar `ARGOCD_AUTH_TOKEN`, revogar o antigo.
 
 ## Limitações do laboratório
