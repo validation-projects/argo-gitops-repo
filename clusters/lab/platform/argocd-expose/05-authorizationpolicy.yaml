@@ -11,4 +11,4 @@ spec:
   rules:
     - to:
         - operation:
-            hosts: [argo.diegovieira.app, app.canary.lab]
+            hosts: [argo.diegovieira.app, app.canary.lab, canary.diegovieira.app]

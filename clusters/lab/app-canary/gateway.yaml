@@ -11,7 +11,7 @@ spec:
         number: 80
         name: http
         protocol: HTTP
-      hosts: [app.canary.lab]
+      hosts: [app.canary.lab, canary.diegovieira.app]
       tls:
         httpsRedirect: true
     - port:
@@ -23,3 +23,13 @@ spec:
         mode: SIMPLE
         # Secret criado fora do Git no namespace do ingress gateway (istio-system).
         credentialName: canary-demo-tls
+    - port:
+        number: 443
+        name: https-public
+        protocol: HTTPS
+      hosts: [canary.diegovieira.app]
+      tls:
+        mode: SIMPLE
+        # Wildcard *.diegovieira.app emitido pelo cert-manager (platform/argocd-expose/01-certificate.yaml).
+        credentialName: argocd-tls
+        minProtocolVersion: TLSV1_2

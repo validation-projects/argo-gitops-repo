@@ -4,7 +4,7 @@ metadata:
   name: canary-demo
   namespace: app-canary
 spec:
-  hosts: [app.canary.lab]
+  hosts: [app.canary.lab, canary.diegovieira.app]
   gateways: [canary-demo]
   http:
     - name: primary
