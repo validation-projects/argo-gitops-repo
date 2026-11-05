@@ -12,9 +12,7 @@ spec:
       route:
         - destination:
             host: canary-demo-stable
-            subset: stable
           weight: 100
         - destination:
-            host: canary-demo-stable
-            subset: canary
+            host: canary-demo-canary
           weight: 0

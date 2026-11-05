@@ -4,14 +4,8 @@ metadata:
   name: canary-demo
   namespace: app-canary
 spec:
-  host: canary-demo-stable
+  # Split por host: o Argo Rollouts fixa o selector de cada Service no ReplicaSet correspondente.
+  host: '*.app-canary.svc.cluster.local'
   trafficPolicy:
     tls:
       mode: ISTIO_MUTUAL
-  subsets:
-    - name: stable
-      labels:
-        app: canary-demo
-    - name: canary
-      labels:
-        app: canary-demo

@@ -19,10 +19,6 @@ spec:
             name: canary-demo
             routes:
               - primary
-          destinationRule:
-            name: canary-demo
-            canarySubsetName: canary
-            stableSubsetName: stable
       steps:
         - setWeight: 50
         - pause: {}
