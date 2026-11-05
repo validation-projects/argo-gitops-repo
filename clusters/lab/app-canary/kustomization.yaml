@@ -13,6 +13,6 @@ resources:
 - networkpolicy.yaml
 - resourcequota.yaml
 images:
-- digest: sha256:7c27a0f3d7af266023059625e294a5ab1aa50815c6f8cd65efae4c19d921782d
+- digest: sha256:e42debc64246ebfeea879d7e04ebd979f32d4b7515a0d83e4bfc30b1d8a381d8
   name: canary-demo
   newName: ghcr.io/validation-projects/canary-demo
