@@ -1,3 +1,0 @@
-# TLS termina no gateway do Istio; aplicar com kubectl patch para não sobrescrever o ConfigMap, depois reiniciar argocd-server.
-#   kubectl -n argocd patch cm argocd-cmd-params-cm --type merge -p '{"data":{"server.insecure":"true"}}'
-#   kubectl -n argocd rollout restart deploy/argocd-server

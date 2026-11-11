@@ -30,6 +30,6 @@ spec:
       hosts: [canary.diegovieira.app]
       tls:
         mode: SIMPLE
-        # Wildcard *.diegovieira.app emitido pelo cert-manager (platform/argocd-expose/01-certificate.yaml).
+        # Wildcard *.diegovieira.app emitido pelo cert-manager (cluster/argocd-expose/01-certificate.yaml).
         credentialName: argocd-tls
         minProtocolVersion: TLSV1_2
