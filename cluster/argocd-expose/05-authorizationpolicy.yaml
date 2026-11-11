@@ -18,3 +18,9 @@ spec:
               - argo.diegovieira.app:30443
               - ingress.diegovieira.app:30080
               - ingress.diegovieira.app:30443
+              - canary.diegovieira.app
+              - canary.diegovieira.app:30080
+              - canary.diegovieira.app:30443
+              - app.canary.lab
+              - app.canary.lab:30080
+              - app.canary.lab:30443
