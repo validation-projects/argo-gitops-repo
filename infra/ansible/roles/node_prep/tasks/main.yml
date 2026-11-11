@@ -1,0 +1,120 @@
+- name: Garantir servidores DNS (IP estático, sem resolvconf)
+  ansible.builtin.lineinfile:
+    path: /etc/resolv.conf
+    line: "nameserver {{ item }}"
+    mode: "0644"
+  loop: "{{ dns_servers }}"
+
+- name: Desativar swap
+  ansible.builtin.command: swapoff -a
+  changed_when: ansible_swaptotal_mb > 0
+
+- name: Comentar swap no fstab
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^([^#].*\sswap\s.*)$'
+    replace: '# \1'
+
+- name: Módulos de kernel persistentes
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/k8s.conf
+    content: "overlay\nbr_netfilter\n"
+    mode: "0644"
+
+- name: Carregar módulos
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop: [overlay, br_netfilter]
+
+- name: Parâmetros de sysctl
+  ansible.posix.sysctl:
+    name: "{{ item }}"
+    value: "1"
+    sysctl_file: /etc/sysctl.d/k8s.conf
+    reload: true
+  loop:
+    - net.bridge.bridge-nf-call-iptables
+    - net.bridge.bridge-nf-call-ip6tables
+    - net.ipv4.ip_forward
+
+- name: Instalar pacotes base
+  ansible.builtin.apt:
+    name: [apt-transport-https, ca-certificates, curl, gpg, containerd, chrony]
+    update_cache: true
+
+- name: Diretório da configuração do containerd
+  ansible.builtin.file:
+    path: /etc/containerd
+    state: directory
+    mode: "0755"
+
+- name: Verificar config do containerd (SystemdCgroup e CNI em /opt/cni/bin)
+  ansible.builtin.shell: >
+    grep -q 'SystemdCgroup = true' /etc/containerd/config.toml &&
+    grep -Eq "bin_dirs? = (\"|\[.)/opt/cni/bin" /etc/containerd/config.toml
+  register: containerd_cfg
+  failed_when: false
+  changed_when: false
+
+# O default do binário acompanha o schema da versão instalada; o Debian aponta bin_dir para /usr/lib/cni.
+- name: Gerar configuração do containerd
+  ansible.builtin.shell: >
+    containerd config default |
+    sed -e 's/SystemdCgroup = false/SystemdCgroup = true/'
+    -e 's#bin_dir = .*#bin_dir = "/opt/cni/bin"#'
+    -e "s#bin_dirs = .*#bin_dirs = ['/opt/cni/bin']#" > /etc/containerd/config.toml
+  when: containerd_cfg.rc != 0
+  notify: Reiniciar containerd
+
+- name: Aplicar a configuração do containerd antes do kubeadm
+  ansible.builtin.meta: flush_handlers
+
+- name: Habilitar serviços
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop: [containerd, chrony]
+
+- name: Repositório Kubernetes
+  ansible.builtin.deb822_repository:
+    name: kubernetes
+    types: deb
+    uris: "https://pkgs.k8s.io/core:/stable:/{{ k8s_minor }}/deb/"
+    suites: /
+    signed_by: "https://pkgs.k8s.io/core:/stable:/{{ k8s_minor }}/deb/Release.key"
+    state: present
+
+- name: Instalar kubelet, kubeadm e kubectl
+  ansible.builtin.apt:
+    name: [kubelet, kubeadm, kubectl]
+    update_cache: true
+
+- name: Fixar versões
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop: [kubelet, kubeadm, kubectl]
+
+- name: Diretório de configuração do serviço kubelet
+  ansible.builtin.file:
+    path: /etc/systemd/system/kubelet.service.d
+    state: directory
+    mode: "0755"
+
+- name: Desativar swap antes de iniciar o kubelet
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/kubelet.service.d/20-disable-swap.conf
+    content: |
+      [Service]
+      ExecStartPre=/sbin/swapoff -a
+    mode: "0644"
+  notify: Reiniciar kubelet
+
+- name: Habilitar kubelet
+  ansible.builtin.systemd:
+    name: kubelet
+    enabled: true
+    state: started
+    daemon_reload: true

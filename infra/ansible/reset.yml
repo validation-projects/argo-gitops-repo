@@ -1,0 +1,63 @@
+# Remove o cluster Kubernetes de todos os nós. DESTRUTIVO.
+# Uso: ansible-playbook reset.yml            (pede confirmação)
+#      ansible-playbook reset.yml -e confirm_reset=yes
+- name: Resetar cluster
+  hosts: all
+  vars_prompt:
+    - name: confirm_reset
+      prompt: "Isso apaga o cluster em TODOS os nós. Digite 'yes' para continuar"
+      private: false
+  tasks:
+    - name: Confirmar
+      ansible.builtin.assert:
+        that: confirm_reset | default('') == 'yes'
+        fail_msg: "Reset cancelado"
+      run_once: true
+
+    - name: kubeadm reset
+      ansible.builtin.command: kubeadm reset -f --cri-socket unix:///run/containerd/containerd.sock
+      failed_when: false
+      changed_when: true
+
+    - name: Parar kubelet
+      ansible.builtin.systemd:
+        name: kubelet
+        state: stopped
+      failed_when: false
+
+    - name: Remover diretórios de estado
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/kubernetes
+        - /etc/cni/net.d
+        - /var/lib/etcd
+        - /var/lib/kubelet
+        - /var/lib/calico
+        - /var/run/calico
+        - /var/lib/cni
+        - /root/.kube
+        - "{{ ansible_user_dir }}/.kube"
+        - /opt/istio-operator.yaml
+        - "/opt/istio-{{ istio_version }}"
+
+    - name: Remover interfaces do Calico
+      ansible.builtin.shell: |
+        for i in $(ip -o link show | awk -F': ' '{print $2}' | cut -d@ -f1 | grep -E '^(cali|vxlan\.calico|tunl0)'); do
+          ip link delete "$i" || true
+        done
+      changed_when: false
+
+    - name: Limpar regras de iptables/ip6tables
+      ansible.builtin.shell: |
+        for t in iptables ip6tables; do
+          for tb in filter nat mangle raw; do $t -t $tb -F; $t -t $tb -X; done
+        done
+      changed_when: false
+      failed_when: false
+
+    - name: Reiniciar containerd
+      ansible.builtin.systemd:
+        name: containerd
+        state: restarted

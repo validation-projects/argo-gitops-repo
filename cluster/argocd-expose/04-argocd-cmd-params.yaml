@@ -1,0 +1,1 @@
+# server.insecure=true é aplicado pelo role platform do Ansible (patch no argocd-cmd-params-cm, sem sobrescrever o ConfigMap).

@@ -1,0 +1,90 @@
+- name: kubeadm init
+  ansible.builtin.command: kubeadm init --pod-network-cidr={{ pod_cidr }}
+  args:
+    creates: /etc/kubernetes/admin.conf
+
+- name: Diretório .kube do usuário
+  ansible.builtin.file:
+    path: "{{ ansible_user_dir }}/.kube"
+    state: directory
+    owner: "{{ ansible_user }}"
+    mode: "0755"
+
+- name: Copiar kubeconfig para o usuário
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf
+    dest: "{{ ansible_user_dir }}/.kube/config"
+    remote_src: true
+    owner: "{{ ansible_user }}"
+    mode: "0600"
+
+- name: Aguardar o API server
+  ansible.builtin.command: kubectl get --raw=/readyz
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  register: apiserver
+  until: apiserver.rc == 0
+  retries: 30
+  delay: 5
+  changed_when: false
+
+- name: Instalar CRDs do tigera-operator (Calico)
+  ansible.builtin.command: >
+    kubectl apply --server-side -f
+    https://raw.githubusercontent.com/projectcalico/calico/{{ calico_version }}/manifests/operator-crds.yaml
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  register: tigera_crds
+  until: tigera_crds.rc == 0
+  retries: 10
+  delay: 10
+  changed_when: false
+
+- name: Instalar tigera-operator (Calico)
+  ansible.builtin.command: >
+    kubectl apply --server-side -f
+    https://raw.githubusercontent.com/projectcalico/calico/{{ calico_version }}/manifests/tigera-operator.yaml
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  register: tigera
+  until: tigera.rc == 0
+  retries: 10
+  delay: 10
+  changed_when: false
+
+- name: Aguardar CRDs do Calico
+  ansible.builtin.command: kubectl wait --for=condition=Established crd/installations.operator.tigera.io --timeout=120s
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  changed_when: false
+
+- name: Instalar custom-resources do Calico com o pod CIDR
+  ansible.builtin.shell: >
+    curl -fsSL https://raw.githubusercontent.com/projectcalico/calico/{{ calico_version }}/manifests/custom-resources.yaml |
+    sed "s#192.168.0.0/16#{{ pod_cidr }}#" | kubectl apply -f -
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  register: calico_cr
+  until: calico_cr.rc == 0
+  retries: 10
+  delay: 10
+  changed_when: false
+
+- name: Remover taint do control plane (laboratório)
+  ansible.builtin.command: kubectl taint nodes --all node-role.kubernetes.io/control-plane-
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  register: taint
+  changed_when: "'untainted' in taint.stdout"
+  failed_when: false
+
+- name: Gerar comando de join
+  ansible.builtin.command: kubeadm token create --print-join-command
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  register: join_cmd
+  changed_when: false
+
+- name: Guardar comando de join
+  ansible.builtin.set_fact:
+    kubeadm_join_command: "{{ join_cmd.stdout }}"

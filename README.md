@@ -1,34 +1,94 @@
-# canary-demo-gitops
+# Cluster lab: infraestrutura e GitOps
 
-Estado desejado do cluster `lab`. O workflow da aplicação atualiza a imagem (por digest) em `clusters/lab/app-canary/kustomization.yaml`.
+Este repositório contém o provisionamento do cluster Kubernetes e os manifests
+da plataforma e do workload canary. O workflow da aplicação atualiza a imagem
+(por digest) em `clusters/lab/app-canary/kustomization.yaml`.
 
-## Instalação da plataforma (executar nas VMs; versões a fixar e registrar abaixo)
+## Conteúdo
 
-1. VMs: hostname, NTP, swap off, módulos `overlay` e `br_netfilter`, sysctl de rede, containerd, kubeadm/kubelet/kubectl fixados.
-2. `kubeadm init --pod-network-cidr=<CIDR>`; instalar o CNI (Calico ou Cilium); `kubeadm join` nos workers.
-3. Istio: `istioctl install` com requests/limits no `istiod` e no ingress gateway; expor via NodePort ou MetalLB.
-4. Argo CD: `kubectl create ns argocd` e aplicar o manifest oficial da versão fixada; configurar TLS e trocar a senha admin.
-5. Argo Rollouts: `kubectl create ns argo-rollouts` e aplicar o manifest oficial da versão fixada.
-6. Certificado TLS: criar o Secret `canary-demo-tls` em `istio-system` (fora do Git).
-7. Cadastrar este repositório no Argo CD (deploy key SSH somente leitura).
-8. `kubectl apply -f clusters/lab/argocd/project.yaml -f clusters/lab/argocd/application.yaml`.
-9. Criar o token da role `ci`: `argocd proj role create-token canary-demo ci`; guardar em secret do GitHub.
-10. Adicionar `app.canary.lab` ao DNS interno ou `/etc/hosts` apontando para o gateway.
+- `infra/ansible/`: preparação dos nós, inicialização do control plane, entrada
+  dos workers e instalação da plataforma.
+- `cluster/argocd-expose/`: emissor de certificados,
+  TLS, Gateway, VirtualService e políticas para expor o Argo CD.
+- `clusters/lab/app-canary/`: Rollout, Services, tráfego canary e políticas da
+  aplicação.
+- `clusters/lab/argocd/`: projeto e aplicação do Argo CD.
 
-### Versões utilizadas (preencher)
+O Ansible instala Kubernetes, Calico, Istio, Argo CD e cert-manager. O ingress
+usa NodePort por padrão; MetalLB é opcional e habilitado definindo `metallb_ip`
+em `infra/ansible/group_vars/all.yml`.
 
-Kubernetes: ? | CNI: ? | Istio: ? | Argo CD: ? | Argo Rollouts: ?
+## Provisionar a infraestrutura
 
-## Operação
+1. Ajuste os endereços e hosts em `infra/ansible/inventory/hosts.yml` e os
+   parâmetros/versões em `infra/ansible/group_vars/all.yml`.
+2. Instale Ansible e as collections usadas pelos playbooks:
 
-- Deploy: automático pelo pipeline. O Rollout pausa em 50% (VirtualService 50/50 aplicado pelo Argo Rollouts).
+   ```sh
+   ansible-galaxy collection install community.general ansible.posix
+   ```
+
+3. Configure acesso SSH com privilégios administrativos aos nós e execute:
+
+   ```sh
+   cd infra/ansible
+   ansible-playbook site.yml
+   ```
+
+O playbook `reset.yml` limpa o estado Kubernetes de todos os nós. Ele é
+destrutivo e exige confirmação explícita.
+
+## Pós-instalação
+
+- Crie o Secret `digitalocean-dns` no namespace `cert-manager` com o token da
+  API da DigitalOcean para que o cert-manager possa emitir o certificado.
+- Configure o DNS de `argo.diegovieira.app` e `ingress.diegovieira.app` e o
+  encaminhamento WAN de acordo com o modo de ingress escolhido: NodePort
+  `30080/30443` ou o IP configurado no MetalLB.
+- Troque a senha inicial do usuário `admin` do Argo CD e remova o Secret de
+  senha inicial após a troca.
+
+## Instalação e operação do canary
+
+1. Crie o Secret `canary-demo-tls` em `istio-system` (fora do Git), se usar
+   `app.canary.lab`.
+2. Cadastre este repositório no Argo CD com uma deploy key SSH somente leitura.
+3. Aplique o projeto e a aplicação:
+
+   ```sh
+   kubectl apply -f clusters/lab/argocd/project.yaml \
+     -f clusters/lab/argocd/application.yaml
+   ```
+
+4. Crie o token da role `ci` com `argocd proj role create-token canary-demo ci`
+   e guarde-o em um secret do GitHub.
+5. Configure `app.canary.lab` no DNS interno ou em `/etc/hosts`, apontando para
+   o gateway.
+
+O deploy é automático pelo pipeline. O Rollout pausa em 50% (VirtualService
+50/50 aplicado pelo Argo Rollouts).
+
 - Promover: `argocd app actions run canary-demo resume --kind Rollout --resource-name canary-demo`
 - Abortar: `argocd app actions run canary-demo abort --kind Rollout --resource-name canary-demo`
-- Rollback por Git: `git revert` do commit de deploy e sync no Argo CD.
-- Rollback por Argo CD: `argocd app rollback canary-demo <ID>` (exige auto-sync desabilitado).
-- Validar proporção: `SMOKE_URL=https://canary.diegovieira.app/ STABLE_VERSION=x CANARY_VERSION=y node scripts/smoke-ratio.js` (script do repositório da aplicação). O app também responde em `canary.diegovieira.app` com o certificado wildcard `argocd-tls`; `app.canary.lab` continua exigindo o Secret `canary-demo-tls` e `SMOKE_HOST=app.canary.lab SMOKE_INSECURE=true`.
-- Rotação de token: gerar novo token da role `ci`, atualizar `ARGOCD_AUTH_TOKEN`, revogar o antigo.
+- Rollback por Git: reverta o commit de deploy e sincronize no Argo CD.
+- Rollback por Argo CD: `argocd app rollback canary-demo <ID>` (exige auto-sync
+  desabilitado).
+- Rotação de token: gere um novo token da role `ci`, atualize
+  `ARGOCD_AUTH_TOKEN` e revogue o antigo.
+
+Para validar a proporção do tráfego, use o script do repositório da aplicação:
+
+```sh
+SMOKE_URL=https://canary.diegovieira.app/ \
+  STABLE_VERSION=x CANARY_VERSION=y node scripts/smoke-ratio.js
+```
+
+O app também responde em `canary.diegovieira.app` com o certificado wildcard
+`argocd-tls`; `app.canary.lab` continua exigindo o Secret `canary-demo-tls` e
+`SMOKE_HOST=app.canary.lab SMOKE_INSECURE=true`.
 
 ## Limitações do laboratório
 
-Um control plane (sem HA), mTLS em PERMISSIVE, aprovação por PR dispensada (push direto em `main`), sem análise Prometheus (`AnalysisTemplate` fica para a fase 8).
+Um control plane (sem HA), mTLS em PERMISSIVE, aprovação por PR dispensada
+(push direto em `main`), sem análise Prometheus (`AnalysisTemplate` fica para a
+fase 8).

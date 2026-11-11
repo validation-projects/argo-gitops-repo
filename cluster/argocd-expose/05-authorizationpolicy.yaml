@@ -1,0 +1,20 @@
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-argocd-host-only
+  namespace: istio-system
+spec:
+  selector:
+    matchLabels:
+      istio: ingressgateway
+  action: ALLOW
+  rules:
+    - to:
+        - operation:
+            hosts:
+              - argo.diegovieira.app
+              - ingress.diegovieira.app
+              - argo.diegovieira.app:30080
+              - argo.diegovieira.app:30443
+              - ingress.diegovieira.app:30080
+              - ingress.diegovieira.app:30443

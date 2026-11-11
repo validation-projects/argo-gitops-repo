@@ -1,0 +1,198 @@
+- name: Detectar instalação Istio existente
+  ansible.builtin.command: >
+    kubectl get deployment istiod -n istio-system
+    -o jsonpath={.spec.template.spec.containers[0].image}
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  register: existing_istiod_image
+  failed_when: false
+  changed_when: false
+
+- name: Recusar cluster já provisionado
+  ansible.builtin.assert:
+    that:
+      - existing_istiod_image.rc != 0 or existing_istiod_image.stdout.split(':')[-1] == istio_version
+    fail_msg: >-
+      O cluster já possui Istio ({{ existing_istiod_image.stdout }}), diferente de
+      {{ istio_version }}. Este playbook é apenas para clusters novos e não faz
+      upgrade; provisione um novo cluster.
+
+- name: Aguardar nós Ready
+  ansible.builtin.command: kubectl wait --for=condition=Ready nodes --all --timeout=300s
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  changed_when: false
+
+- name: Baixar Istio
+  ansible.builtin.shell: curl -fsSL https://istio.io/downloadIstio | ISTIO_VERSION={{ istio_version }} sh -
+  args:
+    chdir: /opt
+    creates: "/opt/istio-{{ istio_version }}/bin/istioctl"
+
+- name: Copiar IstioOperator
+  ansible.builtin.template:
+    src: istio-operator.yaml.j2
+    dest: /opt/istio-operator.yaml
+    mode: "0644"
+
+- name: Desabilitar connect-time LB do Calico (pods não alcançam o ClusterIP da API com Istio)
+  ansible.builtin.command: >
+    kubectl patch felixconfigurations.crd.projectcalico.org default --type merge
+    -p '{"spec":{"bpfConnectTimeLoadBalancing":"Disabled"}}'
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  register: felix_patch
+  until: felix_patch.rc == 0
+  retries: 10
+  delay: 10
+  changed_when: "'no change' not in felix_patch.stdout"
+
+- name: Instalar MetalLB (opcional, quando metallb_ip está definido)
+  when: metallb_ip | length > 0
+  block:
+    - name: Aplicar manifests do MetalLB
+      ansible.builtin.command: >
+        kubectl apply --server-side --force-conflicts -f
+        https://raw.githubusercontent.com/metallb/metallb/{{ metallb_version }}/config/manifests/metallb-native.yaml
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    - name: Aguardar controller do MetalLB
+      ansible.builtin.command: kubectl -n metallb-system rollout status deploy/controller --timeout=300s
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    - name: Configurar pool e anúncio L2
+      ansible.builtin.shell: kubectl apply -f -
+      args:
+        stdin: |
+          apiVersion: metallb.io/v1beta1
+          kind: IPAddressPool
+          metadata:
+            name: lab-pool
+            namespace: metallb-system
+          spec:
+            addresses:
+              - {{ metallb_ip }}/32
+          ---
+          apiVersion: metallb.io/v1beta1
+          kind: L2Advertisement
+          metadata:
+            name: lab-l2
+            namespace: metallb-system
+          spec:
+            ipAddressPools: [lab-pool]
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: metallb_cfg
+      until: metallb_cfg.rc == 0
+      retries: 10
+      delay: 10
+      changed_when: false
+
+- name: Instalar Istio
+  ansible.builtin.command: /opt/istio-{{ istio_version }}/bin/istioctl install -y -f /opt/istio-operator.yaml
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  changed_when: false
+
+- name: Criar namespaces
+  ansible.builtin.shell: kubectl create namespace {{ item }} --dry-run=client -o yaml | kubectl apply -f -
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  loop: [argocd]
+  changed_when: false
+
+- name: Instalar Argo CD
+  ansible.builtin.command: >
+    kubectl apply -n argocd --server-side --force-conflicts -f
+    https://raw.githubusercontent.com/argoproj/argo-cd/{{ argocd_version }}/manifests/install.yaml
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  changed_when: false
+
+- name: Argo CD atrás do gateway (TLS termina no Istio)
+  ansible.builtin.command: >
+    kubectl -n argocd patch cm argocd-cmd-params-cm --type merge
+    -p '{"data":{"server.insecure":"true"}}'
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  register: cmd_params
+  changed_when: "'no change' not in cmd_params.stdout"
+
+- name: Habilitar API keys e login para o usuário admin do Argo CD
+  ansible.builtin.command: >
+    kubectl -n argocd patch cm argocd-cm --type merge
+    -p '{"data":{"accounts.admin":"apiKey, login"}}'
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  register: admin_apikey
+  changed_when: "'no change' not in admin_apikey.stdout"
+
+- name: Instalar cert-manager
+  ansible.builtin.command: >
+    kubectl apply --server-side --force-conflicts -f
+    https://github.com/cert-manager/cert-manager/releases/download/{{ cert_manager_version }}/cert-manager.yaml
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  changed_when: false
+
+- name: Reiniciar argocd-server para aplicar server.insecure
+  ansible.builtin.command: kubectl -n argocd rollout restart deploy/argocd-server
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  when: cmd_params.changed
+  changed_when: true
+
+- name: Aguardar deployments
+  ansible.builtin.command: kubectl -n {{ item.ns }} rollout status deploy/{{ item.name }} --timeout=300s
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  loop:
+    - { ns: argocd, name: argocd-server }
+    - { ns: cert-manager, name: cert-manager }
+    - { ns: cert-manager, name: cert-manager-webhook }
+    - { ns: cert-manager, name: cert-manager-cainjector }
+  changed_when: false
+
+- name: Expor o Argo CD (Gateway, VirtualService, certificado, políticas)
+  when: argocd_expose_apply | bool
+  block:
+    - name: Copiar manifests argocd-expose
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../cluster/argocd-expose/"
+        dest: /opt/argocd-expose/
+        mode: "0644"
+
+    - name: Aplicar manifests argocd-expose
+      ansible.builtin.shell: >
+        kubectl apply -f /opt/argocd-expose/00-clusterissuer.yaml
+        -f /opt/argocd-expose/01-certificate.yaml
+        -f /opt/argocd-expose/02-gateway.yaml
+        -f /opt/argocd-expose/03-virtualservice.yaml
+        -f /opt/argocd-expose/05-authorizationpolicy.yaml
+        -f /opt/argocd-expose/06-networkpolicy.yaml
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: expose_apply
+      until: expose_apply.rc == 0
+      retries: 10
+      delay: 10
+      changed_when: false
+
+- name: Próximos passos manuais
+  ansible.builtin.debug:
+    msg:
+      - "kubectl -n cert-manager create secret generic digitalocean-dns --from-literal=access-token=<TOKEN>"
+      - >-
+        {{ 'argocd-expose já aplicado pelo Ansible (o certificado só é emitido após criar o Secret digitalocean-dns).'
+        if argocd_expose_apply | bool else
+        'kubectl apply -f cluster/argocd-expose/00-clusterissuer.yaml -f cluster/argocd-expose/01-certificate.yaml -f cluster/argocd-expose/02-gateway.yaml -f cluster/argocd-expose/03-virtualservice.yaml -f cluster/argocd-expose/05-authorizationpolicy.yaml -f cluster/argocd-expose/06-networkpolicy.yaml (a partir da raiz do repositório)' }}
+      - >-
+        {{ 'Ingress via MetalLB em ' ~ metallb_ip ~ ': port-forward do roteador WAN 80/443 -> ' ~ metallb_ip ~ ':80/443; DNS interno argo.diegovieira.app e ingress.diegovieira.app -> ' ~ metallb_ip ~ '; wildcard DNS público *.diegovieira.app -> IP WAN do roteador'
+        if metallb_ip | length > 0 else
+        'Ingress via NodePort: port-forward do roteador WAN 80 -> <IP de um nó>:30080 e WAN 443 -> <IP de um nó>:30443; wildcard DNS público *.diegovieira.app -> IP WAN do roteador' }}
+      - "Senha inicial do Argo CD (usuário admin): kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo"
+      - "Depois de trocar a senha, remover o secret: kubectl -n argocd delete secret argocd-initial-admin-secret"

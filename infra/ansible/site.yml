@@ -1,0 +1,15 @@
+- name: Preparar todos os nós
+  hosts: all
+  roles: [node_prep]
+
+- name: Inicializar control plane
+  hosts: control_plane
+  roles: [control_plane]
+
+- name: Juntar workers ao cluster
+  hosts: workers
+  roles: [worker_join]
+
+- name: Instalar plataforma (Istio, Argo CD, cert-manager)
+  hosts: control_plane
+  roles: [platform]

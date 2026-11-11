@@ -1,0 +1,13 @@
+k8s_minor: v1.37
+pod_cidr: 10.244.0.0/16
+calico_version: v3.33.0
+istio_version: 1.31.3
+argocd_version: v3.6.0
+cert_manager_version: v1.21.3
+kubeconfig: /etc/kubernetes/admin.conf
+dns_servers: [192.168.88.1, 8.8.8.8]
+metallb_version: v0.14.9
+# IP livre (fora do DHCP) para o ingress gateway via MetalLB. Vazio = NodePort (30080/30443).
+metallb_ip: ""
+# Aplica cluster/argocd-expose ao final do playbook.
+argocd_expose_apply: true
