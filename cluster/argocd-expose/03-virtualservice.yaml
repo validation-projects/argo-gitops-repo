@@ -7,6 +7,16 @@ spec:
   hosts: [argo.diegovieira.app, ingress.diegovieira.app]
   gateways: [istio-system/argocd-gateway]
   http:
+    - match:
+        - uri: { exact: /rollouts }
+      redirect:
+        uri: /rollouts/
+    - match:
+        - uri: { prefix: /rollouts/ }
+      route:
+        - destination:
+            host: rollouts-oauth2-proxy.argo-rollouts.svc.cluster.local
+            port: { number: 4180 }
     - route:
         - destination:
             host: argocd-server.argocd.svc.cluster.local
