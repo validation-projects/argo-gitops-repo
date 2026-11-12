@@ -15,8 +15,8 @@ spec:
         - uri: { prefix: /rollouts/ }
       route:
         - destination:
-            host: rollouts-oauth2-proxy.argo-rollouts.svc.cluster.local
-            port: { number: 4180 }
+            host: argo-rollouts-dashboard.argo-rollouts.svc.cluster.local
+            port: { number: 3100 }
     - route:
         - destination:
             host: argocd-server.argocd.svc.cluster.local

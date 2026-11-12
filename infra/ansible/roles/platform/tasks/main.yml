@@ -187,7 +187,6 @@
   ansible.builtin.debug:
     msg:
       - "kubectl -n cert-manager create secret generic digitalocean-dns --from-literal=access-token=<TOKEN>"
-      - "Dashboard do Argo Rollouts (/rollouts): kubectl -n argo-rollouts create secret generic rollouts-oauth2-proxy --from-literal=client-id=<ID> --from-literal=client-secret=<SECRET> --from-literal=cookie-secret=$(openssl rand -base64 32 | tr -- '+/' '-_')"
       - >-
         {{ 'argocd-expose já aplicado pelo Ansible (o certificado só é emitido após criar o Secret digitalocean-dns).'
         if argocd_expose_apply | bool else

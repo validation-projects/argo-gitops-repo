@@ -53,23 +53,8 @@ destrutivo e exige confirmação explícita.
 
 `cluster/argocd-expose/07-rollouts-dashboard.yaml` publica o dashboard em
 `https://argo.diegovieira.app/rollouts/` (ex.:
-`/rollouts/rollout/app-canary/canary-demo`). O dashboard não tem autenticação,
-então só o oauth2-proxy (login GitHub, usuários em `--github-user`) chega até ele.
-
-1. Crie um GitHub OAuth App com homepage `https://argo.diegovieira.app/rollouts/`
-   e callback `https://argo.diegovieira.app/rollouts/oauth2/callback`.
-2. Crie o Secret (fora do Git):
-
-   ```sh
-   kubectl create namespace argo-rollouts --dry-run=client -o yaml | kubectl apply -f -
-   kubectl -n argo-rollouts create secret generic rollouts-oauth2-proxy \
-     --from-literal=client-id=<CLIENT_ID> \
-     --from-literal=client-secret=<CLIENT_SECRET> \
-     --from-literal=cookie-secret="$(openssl rand -base64 32 | tr -- '+/' '-_')"
-   ```
-
-3. Aplique `cluster/argocd-expose/07-rollouts-dashboard.yaml` e
-   `03-virtualservice.yaml` (ou rode o role `platform`).
+`/rollouts/rollout/app-canary/canary-demo`). Ele não tem autenticação: no
+laboratório o acesso é aberto e o RBAC fica restrito ao namespace `app-canary`.
 
 ## Instalação e operação do canary
 

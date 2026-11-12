@@ -1,11 +1,20 @@
-# Argo Rollouts dashboard at https://argo.diegovieira.app/rollouts/, behind oauth2-proxy (GitHub login).
-# Requires the Secret rollouts-oauth2-proxy (client-id, client-secret, cookie-secret) in argo-rollouts; see README.
+# Argo Rollouts dashboard at https://argo.diegovieira.app/rollouts/ (lab only).
+# The dashboard has no auth: anyone with the URL can promote/abort, so its RBAC is limited to app-canary.
 apiVersion: v1
 kind: Namespace
 metadata:
   name: argo-rollouts
 ---
-# Dashboard: dashboard-install.yaml from argo-rollouts v1.10.2, with namespace, hardening and resources.
+# Same as clusters/lab/app-canary/namespace.yaml, so the Role below applies before Argo CD syncs the app.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: app-canary
+  labels:
+    istio-injection: enabled
+    pod-security.kubernetes.io/enforce: baseline
+---
+# Based on dashboard-install.yaml from argo-rollouts v1.10.2, with a namespaced Role instead of the ClusterRole.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -17,9 +26,10 @@ metadata:
     app.kubernetes.io/part-of: argo-rollouts
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
   name: argo-rollouts-dashboard
+  namespace: app-canary
   labels:
     app.kubernetes.io/component: argo-rollouts-dashboard
     app.kubernetes.io/name: argo-rollouts-dashboard
@@ -32,7 +42,7 @@ rules:
     resources: [analysisruns, analysisruns/finalizers, experiments, experiments/finalizers]
     verbs: [create, get, list, watch]
   - apiGroups: [argoproj.io]
-    resources: [analysistemplates, clusteranalysistemplates]
+    resources: [analysistemplates]
     verbs: [get, list, watch]
   - apiGroups: [apps]
     resources: [deployments]
@@ -45,16 +55,17 @@ rules:
     verbs: [list, watch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
   name: argo-rollouts-dashboard
+  namespace: app-canary
   labels:
     app.kubernetes.io/component: argo-rollouts-dashboard
     app.kubernetes.io/name: argo-rollouts-dashboard
     app.kubernetes.io/part-of: argo-rollouts
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
+  kind: Role
   name: argo-rollouts-dashboard
 subjects:
   - kind: ServiceAccount
@@ -96,108 +107,13 @@ spec:
         app.kubernetes.io/name: argo-rollouts-dashboard
     spec:
       serviceAccountName: argo-rollouts-dashboard
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 999
-        seccompProfile: { type: RuntimeDefault }
       containers:
         - name: argo-rollouts-dashboard
           image: quay.io/argoproj/kubectl-argo-rollouts:v1.10.2
-          args: [dashboard, --address=0.0.0.0, --root-path=rollouts]
+          args: [dashboard, --address=0.0.0.0, --root-path=rollouts, --namespace=app-canary]
           ports:
             - { name: http, containerPort: 3100 }
-          readinessProbe:
-            httpGet: { path: /rollouts/, port: http }
-          resources:
-            requests: { cpu: 10m, memory: 64Mi }
-            limits: { memory: 256Mi }
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities: { drop: [ALL] }
 ---
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: rollouts-oauth2-proxy
-  namespace: argo-rollouts
-automountServiceAccountToken: false
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: rollouts-oauth2-proxy
-  namespace: argo-rollouts
-  labels:
-    app.kubernetes.io/name: rollouts-oauth2-proxy
-spec:
-  selector:
-    app.kubernetes.io/name: rollouts-oauth2-proxy
-  ports:
-    - { name: http, port: 4180, targetPort: 4180, protocol: TCP }
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: rollouts-oauth2-proxy
-  namespace: argo-rollouts
-  labels:
-    app.kubernetes.io/name: rollouts-oauth2-proxy
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: rollouts-oauth2-proxy
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: rollouts-oauth2-proxy
-    spec:
-      serviceAccountName: rollouts-oauth2-proxy
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 65532
-        seccompProfile: { type: RuntimeDefault }
-      containers:
-        - name: oauth2-proxy
-          image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.6
-          args:
-            - --http-address=0.0.0.0:4180
-            - --provider=github
-            # Only these GitHub users can sign in (comma-separated). --github-org/--github-team also work.
-            - --github-user=diegohvieira
-            - --email-domain=*
-            - --upstream=http://argo-rollouts-dashboard.argo-rollouts.svc.cluster.local:3100/rollouts/
-            - --proxy-prefix=/rollouts/oauth2
-            - --redirect-url=https://argo.diegovieira.app/rollouts/oauth2/callback
-            - --cookie-name=_rollouts_oauth2
-            - --cookie-path=/rollouts
-            - --cookie-secure=true
-            - --cookie-expire=12h
-            - --reverse-proxy=true
-            - --skip-provider-button=true
-          env:
-            - name: OAUTH2_PROXY_CLIENT_ID
-              valueFrom: { secretKeyRef: { name: rollouts-oauth2-proxy, key: client-id } }
-            - name: OAUTH2_PROXY_CLIENT_SECRET
-              valueFrom: { secretKeyRef: { name: rollouts-oauth2-proxy, key: client-secret } }
-            - name: OAUTH2_PROXY_COOKIE_SECRET
-              valueFrom: { secretKeyRef: { name: rollouts-oauth2-proxy, key: cookie-secret } }
-          ports:
-            - { name: http, containerPort: 4180 }
-          readinessProbe:
-            httpGet: { path: /ready, port: http }
-          livenessProbe:
-            httpGet: { path: /ping, port: http }
-          resources:
-            requests: { cpu: 10m, memory: 32Mi }
-            limits: { memory: 128Mi }
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities: { drop: [ALL] }
----
-# The dashboard has no auth: only oauth2-proxy reaches it, and only the ingress gateway reaches oauth2-proxy.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -210,26 +126,8 @@ spec:
   policyTypes: [Ingress]
   ingress:
     - from:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: rollouts-oauth2-proxy
-      ports:
-        - { protocol: TCP, port: 3100 }
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: rollouts-oauth2-proxy-ingress
-  namespace: argo-rollouts
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: rollouts-oauth2-proxy
-  policyTypes: [Ingress]
-  ingress:
-    - from:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: istio-system
       ports:
-        - { protocol: TCP, port: 4180 }
+        - { protocol: TCP, port: 3100 }
