@@ -1,0 +1,133 @@
+# Argo Rollouts dashboard at https://argo.diegovieira.app/rollouts/ (lab only).
+# The dashboard has no auth: anyone with the URL can promote/abort, so its RBAC is limited to app-canary.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argo-rollouts
+---
+# Same as clusters/lab/app-canary/namespace.yaml, so the Role below applies before Argo CD syncs the app.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: app-canary
+  labels:
+    istio-injection: enabled
+    pod-security.kubernetes.io/enforce: baseline
+---
+# Based on dashboard-install.yaml from argo-rollouts v1.10.2, with a namespaced Role instead of the ClusterRole.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argo-rollouts-dashboard
+  namespace: argo-rollouts
+  labels:
+    app.kubernetes.io/component: argo-rollouts-dashboard
+    app.kubernetes.io/name: argo-rollouts-dashboard
+    app.kubernetes.io/part-of: argo-rollouts
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argo-rollouts-dashboard
+  namespace: app-canary
+  labels:
+    app.kubernetes.io/component: argo-rollouts-dashboard
+    app.kubernetes.io/name: argo-rollouts-dashboard
+    app.kubernetes.io/part-of: argo-rollouts
+rules:
+  - apiGroups: [argoproj.io]
+    resources: [rollouts, rollouts/status, rollouts/finalizers]
+    verbs: [get, list, watch, update, patch]
+  - apiGroups: [argoproj.io]
+    resources: [analysisruns, analysisruns/finalizers, experiments, experiments/finalizers]
+    verbs: [create, get, list, watch]
+  - apiGroups: [argoproj.io]
+    resources: [analysistemplates]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get, update, list, watch, patch]
+  - apiGroups: [apps]
+    resources: [replicasets]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argo-rollouts-dashboard
+  namespace: app-canary
+  labels:
+    app.kubernetes.io/component: argo-rollouts-dashboard
+    app.kubernetes.io/name: argo-rollouts-dashboard
+    app.kubernetes.io/part-of: argo-rollouts
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: argo-rollouts-dashboard
+subjects:
+  - kind: ServiceAccount
+    name: argo-rollouts-dashboard
+    namespace: argo-rollouts
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: argo-rollouts-dashboard
+  namespace: argo-rollouts
+  labels:
+    app.kubernetes.io/component: argo-rollouts-dashboard
+    app.kubernetes.io/name: argo-rollouts-dashboard
+    app.kubernetes.io/part-of: argo-rollouts
+spec:
+  selector:
+    app.kubernetes.io/name: argo-rollouts-dashboard
+  ports:
+    - { name: http, port: 3100, targetPort: 3100, protocol: TCP }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argo-rollouts-dashboard
+  namespace: argo-rollouts
+  labels:
+    app.kubernetes.io/component: argo-rollouts-dashboard
+    app.kubernetes.io/name: argo-rollouts-dashboard
+    app.kubernetes.io/part-of: argo-rollouts
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argo-rollouts-dashboard
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: argo-rollouts-dashboard
+    spec:
+      serviceAccountName: argo-rollouts-dashboard
+      containers:
+        - name: argo-rollouts-dashboard
+          image: quay.io/argoproj/kubectl-argo-rollouts:v1.10.2
+          args: [dashboard, --address=0.0.0.0, --root-path=rollouts, --namespace=app-canary]
+          ports:
+            - { name: http, containerPort: 3100 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: argo-rollouts-dashboard-ingress
+  namespace: argo-rollouts
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: argo-rollouts-dashboard
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-system
+      ports:
+        - { protocol: TCP, port: 3100 }

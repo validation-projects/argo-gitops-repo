@@ -9,7 +9,8 @@ da plataforma e do workload canary. O workflow da aplicação atualiza a imagem
 - `infra/ansible/`: preparação dos nós, inicialização do control plane, entrada
   dos workers e instalação da plataforma.
 - `cluster/argocd-expose/`: emissor de certificados,
-  TLS, Gateway, VirtualService e políticas para expor o Argo CD.
+  TLS, Gateway, VirtualService e políticas para expor o Argo CD e o dashboard
+  do Argo Rollouts.
 - `clusters/lab/app-canary/`: Rollout, Services, tráfego canary e políticas da
   aplicação.
 - `clusters/lab/argocd/`: projeto e aplicação do Argo CD.
@@ -47,6 +48,13 @@ destrutivo e exige confirmação explícita.
   `30080/30443` ou o IP configurado no MetalLB.
 - Troque a senha inicial do usuário `admin` do Argo CD e remova o Secret de
   senha inicial após a troca.
+
+## Dashboard do Argo Rollouts
+
+`cluster/argocd-expose/07-rollouts-dashboard.yaml` publica o dashboard em
+`https://argo.diegovieira.app/rollouts/` (ex.:
+`/rollouts/rollout/app-canary/canary-demo`). Ele não tem autenticação: no
+laboratório o acesso é aberto e o RBAC fica restrito ao namespace `app-canary`.
 
 ## Instalação e operação do canary
 

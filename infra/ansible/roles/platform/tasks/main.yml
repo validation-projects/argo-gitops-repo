@@ -174,6 +174,7 @@
         -f /opt/argocd-expose/03-virtualservice.yaml
         -f /opt/argocd-expose/05-authorizationpolicy.yaml
         -f /opt/argocd-expose/06-networkpolicy.yaml
+        -f /opt/argocd-expose/07-rollouts-dashboard.yaml
       environment:
         KUBECONFIG: "{{ kubeconfig }}"
       register: expose_apply
@@ -189,7 +190,7 @@
       - >-
         {{ 'argocd-expose já aplicado pelo Ansible (o certificado só é emitido após criar o Secret digitalocean-dns).'
         if argocd_expose_apply | bool else
-        'kubectl apply -f cluster/argocd-expose/00-clusterissuer.yaml -f cluster/argocd-expose/01-certificate.yaml -f cluster/argocd-expose/02-gateway.yaml -f cluster/argocd-expose/03-virtualservice.yaml -f cluster/argocd-expose/05-authorizationpolicy.yaml -f cluster/argocd-expose/06-networkpolicy.yaml (a partir da raiz do repositório)' }}
+        'kubectl apply -f cluster/argocd-expose/00-clusterissuer.yaml -f cluster/argocd-expose/01-certificate.yaml -f cluster/argocd-expose/02-gateway.yaml -f cluster/argocd-expose/03-virtualservice.yaml -f cluster/argocd-expose/05-authorizationpolicy.yaml -f cluster/argocd-expose/06-networkpolicy.yaml -f cluster/argocd-expose/07-rollouts-dashboard.yaml (a partir da raiz do repositório)' }}
       - >-
         {{ 'Ingress via MetalLB em ' ~ metallb_ip ~ ': port-forward do roteador WAN 80/443 -> ' ~ metallb_ip ~ ':80/443; DNS interno argo.diegovieira.app e ingress.diegovieira.app -> ' ~ metallb_ip ~ '; wildcard DNS público *.diegovieira.app -> IP WAN do roteador'
         if metallb_ip | length > 0 else
