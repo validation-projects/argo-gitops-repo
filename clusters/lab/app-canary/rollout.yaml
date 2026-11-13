@@ -21,7 +21,8 @@ spec:
               - primary
       steps:
         - setWeight: 50
-        - pause: {}
+        - pause:
+            duration: 4m
         - setWeight: 100
   template:
     metadata:
