@@ -56,6 +56,20 @@ destrutivo e exige confirmação explícita.
 `/rollouts/rollout/app-canary/canary-demo`). Ele não tem autenticação: no
 laboratório o acesso é aberto e o RBAC fica restrito ao namespace `app-canary`.
 
+## Ambiente efêmero
+
+`clusters/lab/app-canary-ephemeral/` tem o Deployment e o Service
+`canary-demo-ephemeral` (1 réplica, namespace `app-canary`). A Application
+`canary-demo-ephemeral` não fica no Git: o workflow `ephemeral.yaml` do
+`validation-app` cria a Application com o digest da imagem e a anotação
+`validation-projects/expires-at`, e ela é removida com cascade (pods, Deployment
+e Service) quando a remoção é aprovada no environment `ephemeral-removal` ou
+quando o workflow `ephemeral-cleanup.yaml` encontra a expiração vencida.
+
+A role `ci` do projeto precisa das permissões `get`, `create`, `update`, `sync`
+e `delete` em `canary-demo/canary-demo-ephemeral` (já em
+`clusters/lab/argocd/project.yaml`; reaplique o arquivo após alterá-lo).
+
 ## Instalação e operação do canary
 
 1. Crie o Secret `canary-demo-tls` em `istio-system` (fora do Git), se usar

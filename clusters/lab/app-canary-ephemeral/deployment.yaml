@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: canary-demo-ephemeral
+  namespace: app-canary
+spec:
+  replicas: 1
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      app: canary-demo-ephemeral
+  template:
+    metadata:
+      labels:
+        app: canary-demo-ephemeral
+    spec:
+      serviceAccountName: canary-demo
+      imagePullSecrets:
+        - name: ghcr-auth
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: canary-demo
+          image: canary-demo
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: APP_ENVIRONMENT
+              value: lab-ephemeral
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            failureThreshold: 30
+            periodSeconds: 2
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 5

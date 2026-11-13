@@ -21,3 +21,9 @@ spec:
         - p, proj:canary-demo:ci, applications, sync, canary-demo/canary-demo, allow
         - p, proj:canary-demo:ci, applications, action/argoproj.io/Rollout/resume, canary-demo/canary-demo, allow
         - p, proj:canary-demo:ci, applications, action/argoproj.io/Rollout/abort, canary-demo/canary-demo, allow
+        # Ambiente efêmero: criado e removido pelo workflow ephemeral do validation-app.
+        - p, proj:canary-demo:ci, applications, get, canary-demo/canary-demo-ephemeral, allow
+        - p, proj:canary-demo:ci, applications, create, canary-demo/canary-demo-ephemeral, allow
+        - p, proj:canary-demo:ci, applications, update, canary-demo/canary-demo-ephemeral, allow
+        - p, proj:canary-demo:ci, applications, sync, canary-demo/canary-demo-ephemeral, allow
+        - p, proj:canary-demo:ci, applications, delete, canary-demo/canary-demo-ephemeral, allow
